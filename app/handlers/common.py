@@ -5,7 +5,7 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from app.db import Database
 from app.keyboards import main_menu, leaderboard_basis_keyboard, leaderboard_period_keyboard, CANCEL_TEXT, back_home_keyboard
-from app.utils import ensure_user, xp_progress_text, rtl_line, to_english_digits
+from app.utils import ensure_user, xp_progress_text, rtl_line, to_english_digits, league_with_emoji, rank_with_emoji
 from app.notifications import send_streak_notification
 from app.time_utils import jalali_date, jalali_datetime
 
@@ -77,8 +77,9 @@ async def nav_home(call: CallbackQuery, state: FSMContext, db: Database) -> None
 async def profile(message: Message, db: Database) -> None:
     try:
         u = await db.upsert_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
-        rank = await db.get_rank_title(u['level'])
+        rank = rank_with_emoji(await db.get_rank_title(u['level']))
         league = await db.get_user_league(u['cups'])
+        league_name = league_with_emoji(league['name'] if league else 'بدون لیگ')
         cur, nxt = await db.level_bounds(u['level'])
         total_duels = int(u['wins']) + int(u['losses']) + int(u['draws'])
         wrong = max(0, int(u['total_answers']) - int(u['correct_answers']))
@@ -88,8 +89,8 @@ async def profile(message: Message, db: Database) -> None:
         xp_bar = xp_progress_text(u['xp'], cur, nxt)
         await message.answer(
             f"👤 <b>{u['first_name'] or 'کاربر'}</b>  {username}\n"
-            f"🏅 {rank} | <b>Level {u['level']}</b> | XP {xp_bar}\n"
-            f"🏆 {league['name'] if league else 'بدون لیگ'} — <b>{u['cups']} جام</b>\n"
+            f"{rank} | <b>Level {u['level']}</b> | XP {xp_bar}\n"
+            f"🏆 {league_name} — <b>{u['cups']} جام</b>\n"
             f"🪙 سکه: <b>{u['coins']}</b>\n\n"
             f"⚔️ دوئل‌ها: {total_duels} | برد <b>{u['wins']}</b> / مساوی {u['draws']} / شکست <b>{u['losses']}</b>\n"
             f"✅ پاسخ صحیح: {u['correct_answers']} | ❌ غلط: {wrong}\n"
@@ -134,10 +135,11 @@ async def leaderboard_callback(call: CallbackQuery, db: Database) -> None:
             raw_name = r['first_name'] or (('@' + r['username']) if r['username'] else str(r['telegram_id']))
             name = raw_name if len(raw_name) <= 17 else raw_name[:17] + "..."
             safe_name = f"\u2068{name}\u2069"
+            league_name = league_with_emoji(r['league_name'])
             if basis == "league":
-                line = f"{i}. {safe_name} | {r['league_name']} | جام: {r['cups']} | سطح: {r['level']}"
+                line = f"{i}. {safe_name} | {league_name} | جام: {r['cups']} | سطح: {r['level']}"
             else:
-                line = f"{i}. {safe_name} | {r['league_name']} | جام: {r['cups']} | سطح: {r['level']} | امتیاز: {r['score']}"
+                line = f"{i}. {safe_name} | {league_name} | جام: {r['cups']} | سطح: {r['level']} | امتیاز: {r['score']}"
             text += rtl_line(line) + "\n"
         await call.message.edit_text(text, reply_markup=leaderboard_period_keyboard(basis))
         await call.answer()
@@ -158,7 +160,7 @@ async def referral(message: Message, db: Database, bot_username: str) -> None:
         "🎁 لینک دعوت اختصاصی شما:\n"
         f"{link}\n\n"
         f"اگر دوستت با لینک تو وارد بشه و اولین دوئلش رو بازی کنه، تو <b>{rc} سکه و {rx} XP</b> می‌گیری، اون هم <b>{nc} سکه و {nx} XP</b> هدیه می‌گیره.",
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=back_home_keyboard(),
     )
 
 

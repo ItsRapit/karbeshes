@@ -598,6 +598,41 @@ class Database:
     async def active_duel_for_user(self, tg_id: int) -> aiosqlite.Row | None:
         return await self.fetchone("SELECT * FROM duels WHERE status IN ('waiting','invite_waiting','genre_selection','playing') AND (player1_id=? OR player2_id=?) ORDER BY id DESC LIMIT 1", (tg_id, tg_id))
 
+    async def clear_other_active_duels_for_users(self, user_ids: list[int], keep_duel_id: int | None = None) -> None:
+        if not user_ids:
+            return
+        placeholders = ",".join("?" for _ in user_ids)
+        params: list[Any] = list(user_ids) + list(user_ids)
+        sql = f"UPDATE duels SET status='cancelled', finished_at=? WHERE status IN ('waiting','invite_waiting','genre_selection','playing') AND (player1_id IN ({placeholders}) OR player2_id IN ({placeholders}))"
+        params = [now_iso()] + params
+        if keep_duel_id is not None:
+            sql += " AND id<>?"
+            params.append(keep_duel_id)
+        await self.execute_write(sql, params)
+
+    async def cancel_active_duels_with_refund(self) -> list[dict[str, Any]]:
+        rows = await self.fetchall("SELECT * FROM duels WHERE status IN ('waiting','invite_waiting','genre_selection','playing')")
+        random_cost = await self.get_int('random_duel_cost', 5)
+        friendly_cost = await self.get_int('friendly_duel_cost', 20)
+        results: list[dict[str, Any]] = []
+        for d in rows:
+            refunds: dict[int, int] = {}
+            if d['status'] == 'waiting':
+                refunds[d['player1_id']] = random_cost
+            elif d['status'] == 'invite_waiting':
+                refunds[d['player1_id']] = friendly_cost
+            elif d['invite_token']:
+                refunds[d['player1_id']] = friendly_cost
+            else:
+                refunds[d['player1_id']] = random_cost
+                if d['player2_id']:
+                    refunds[d['player2_id']] = random_cost
+            await self.execute_write("UPDATE duels SET status='cancelled', finished_at=? WHERE id=?", (now_iso(), d['id']))
+            for uid, amount in refunds.items():
+                await self.change_coins(uid, amount, 'maintenance_duel_refund', d['id'])
+            results.append({'duel_id': d['id'], 'refunds': refunds})
+        return results
+
     async def available_genres(self) -> list[str]:
         rows = await self.fetchall("""SELECT g.name FROM genres g
                                       WHERE g.is_active=1 AND EXISTS(
@@ -695,7 +730,7 @@ class Database:
         for uid in [p1, p2]:
             u = await self.get_user(uid)
             lg = await self.get_user_league(int(u["cups"] if u else 0))
-            before[uid] = {"level": int(u["level"] if u else 1), "cups": int(u["cups"] if u else 0), "league_id": lg["id"] if lg else None, "league_name": lg["name"] if lg else "بدون لیگ", "league_order": int(lg["sort_order"] if lg else 0)}
+            before[uid] = {"level": int(u["level"] if u else 1), "coins": int(u["coins"] if u else 0), "xp": int(u["xp"] if u else 0), "cups": int(u["cups"] if u else 0), "league_id": lg["id"] if lg else None, "league_name": lg["name"] if lg else "بدون لیگ", "league_order": int(lg["sort_order"] if lg else 0)}
         winner = None
         if (stats[p1]["correct"], -stats[p1]["speed"]) > (stats[p2]["correct"], -stats[p2]["speed"]):
             winner = p1
@@ -726,14 +761,16 @@ class Database:
         for uid in [p1, p2]:
             u = await self.get_user(uid)
             lg = await self.get_user_league(int(u["cups"] if u else 0))
-            after = {"level": int(u["level"] if u else 1), "cups": int(u["cups"] if u else 0), "league_id": lg["id"] if lg else None, "league_name": lg["name"] if lg else "بدون لیگ", "league_order": int(lg["sort_order"] if lg else 0)}
+            after = {"level": int(u["level"] if u else 1), "coins": int(u["coins"] if u else 0), "xp": int(u["xp"] if u else 0), "cups": int(u["cups"] if u else 0), "league_id": lg["id"] if lg else None, "league_name": lg["name"] if lg else "بدون لیگ", "league_order": int(lg["sort_order"] if lg else 0)}
             transitions[uid] = {
                 "before": before[uid],
                 "after": after,
+                "rewards": {"coins": after["coins"] - before[uid]["coins"], "xp": after["xp"] - before[uid]["xp"], "cups": after["cups"] - before[uid]["cups"]},
                 "level_up": after["level"] > before[uid]["level"],
                 "league_promoted": after["league_order"] > before[uid]["league_order"],
                 "league_demoted": after["league_order"] < before[uid]["league_order"],
             }
+        await self.clear_other_active_duels_for_users([p1, p2], keep_duel_id=duel_id)
         await self.activate_referrals_for_players([p1, p2])
         return {"winner": winner, "stats": stats, "transitions": transitions}
 

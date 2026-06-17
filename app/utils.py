@@ -69,6 +69,35 @@ def to_english_digits(value: object) -> str:
     return str(value).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
 
 
+def league_with_emoji(name: str | None) -> str:
+    name = name or "بدون لیگ"
+    if "برنزی" in name:
+        return f"🥉 {name}"
+    if "نقره" in name:
+        return f"🥈 {name}"
+    if "طلایی" in name:
+        return f"🥇 {name}"
+    if "الماسی" in name:
+        return f"💎 {name}"
+    if "اسطوره" in name:
+        return f"👑 {name}"
+    return f"🏅 {name}"
+
+
+def rank_with_emoji(title: str | None) -> str:
+    title = title or "بدون رتبه"
+    mapping = {
+        "تازه‌کار": "🌱",
+        "دانشجو": "📘",
+        "استاد": "🎓",
+        "قهرمان": "🏆",
+        "اسطوره": "👑",
+        "افسانه‌ای": "🔥",
+        "مکس لول": "💫",
+    }
+    return f"{mapping.get(title, '🏅')} {title}"
+
+
 def normalize_genre(value: str | None) -> str:
     raw = (value or "").strip()
     if not raw:

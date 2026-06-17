@@ -49,6 +49,7 @@ async def main() -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="شروع"),
         BotCommand(command="admin", description="پنل ادمین"),
+        BotCommand(command="guide", description="راهنمای کامندهای ادمین"),
         BotCommand(command="help", description="راهنما"),
         BotCommand(command="backup", description="دریافت بک‌آپ دیتابیس"),
         BotCommand(command="cancel", description="لغو عملیات جاری"),

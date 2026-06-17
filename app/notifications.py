@@ -4,6 +4,7 @@ import asyncio
 import logging
 from aiogram import Bot
 from app.db import Database
+from app.utils import league_with_emoji, rank_with_emoji
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +50,13 @@ async def send_duel_transition_notifications(bot: Bot, db: Database, user_id: in
     after = transition.get("after", {})
     if transition.get("level_up"):
         rank = await db.get_rank_title(int(after.get("level", 1)))
-        await animated_level_up(bot, user_id, int(after.get("level", 1)), rank)
+        await animated_level_up(bot, user_id, int(after.get("level", 1)), rank_with_emoji(rank))
         await asyncio.sleep(0.6)
     if transition.get("league_promoted"):
-        await animated_league_promotion(bot, user_id, str(after.get("league_name", "لیگ جدید")))
+        await animated_league_promotion(bot, user_id, league_with_emoji(str(after.get("league_name", "لیگ جدید"))))
         await asyncio.sleep(0.6)
     if transition.get("league_demoted"):
-        await league_demotion(bot, user_id, str(after.get("league_name", "لیگ پایین‌تر")))
+        await league_demotion(bot, user_id, league_with_emoji(str(after.get("league_name", "لیگ پایین‌تر"))))
 
 
 async def send_streak_notification(bot: Bot, user_id: int, reward: dict | None) -> None:
